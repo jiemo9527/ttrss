@@ -123,7 +123,9 @@ ENV UPDATE_LOCK_MINUTES=1
 # 192.168/16, fc00::/7) are only fetched on these ports. Loopback/link-local are always blocked.
 ENV ALLOW_PORTS="80,443"
 
-ENV PHP_SUFFIX=85
+# 固定 PHP 8.3.36；后续安全版本确认后再更新，不在重建时隐式换版。
+ENV PHP_SUFFIX=83
+ARG PHP_PACKAGE_VERSION=8.3.36-r0
 
 ENV SCRIPT_ROOT=/var/www
 
@@ -134,18 +136,19 @@ COPY scripts/check-nginx-version.sh /tmp/check-nginx-version.sh
 # Install dependencies
 RUN set -ex \
   && PHP_PACKAGES="fpm ctype curl dom exif fileinfo gd iconv intl json mbstring \
-  openssl pcntl pdo pdo_pgsql pecl-apcu phar posix session simplexml sockets sodium tokenizer xml xmlwriter zip \
+  openssl opcache pcntl pdo pdo_pgsql pecl-apcu phar posix session simplexml sockets sodium tokenizer xml xmlwriter zip \
   gmp pecl-imagick" \
   && EXT_LIST="" \
   && for p in $PHP_PACKAGES; do \
        EXT_LIST="$EXT_LIST php${PHP_SUFFIX}-$p"; \
      done \
   && apk add --update --no-cache git nginx s6 curl sudo tzdata gnu-libiconv \
-  php${PHP_SUFFIX} $EXT_LIST \
+  php${PHP_SUFFIX}=${PHP_PACKAGE_VERSION} $EXT_LIST \
   imagemagick-heic imagemagick-svg \
   ca-certificates && rm -rf /var/cache/apk/* \
   && sh /tmp/check-nginx-version.sh && rm /tmp/check-nginx-version.sh \
   && if [ ! -e /usr/bin/php ]; then ln -s /usr/bin/php${PHP_SUFFIX} /usr/bin/php; fi \
+  && test "$(php -r 'echo PHP_VERSION;')" = "${PHP_PACKAGE_VERSION%-r*}" \
   && echo -e "opcache.enable_cli=1\nopcache.jit=1255\nopcache.jit_buffer_size=64M" >> /etc/php${PHP_SUFFIX}/php.ini \
   && echo 'env[SCRIPT_ROOT] = $SCRIPT_ROOT' >> /etc/php${PHP_SUFFIX}/php-fpm.d/www.conf \
   # leftover files

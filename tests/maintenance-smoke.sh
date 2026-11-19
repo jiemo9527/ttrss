@@ -5,6 +5,11 @@ if [ "${SMOKE_PULL:-0}" = 1 ]; then docker pull "$image"; fi
 here=$(dirname "$0")
 sh "$here/../scripts/check-nginx-version.sh" \
   "$(docker run --rm --entrypoint nginx "$image" -v 2>&1 | sed -n 's|.*nginx/\([0-9][0-9.]*\).*|\1|p')"
+# 核对 PHP 分支、补丁版本与扩展，防止切换包名后 CLI/FPM 或 OPcache 漏装。
+docker run --rm --entrypoint php "$image" -r '
+  if (PHP_VERSION !== "8.3.36" || !extension_loaded("Zend OPcache") || !extension_loaded("pdo_pgsql") || !extension_loaded("imagick")) exit(1);
+  echo "PHP runtime: ", PHP_VERSION, " PASS\n";'
+docker run --rm --entrypoint sh "$image" -c 'php-fpm83 -v | grep -F "PHP 8.3.36" && php-fpm83 -t'
 docker run --rm --entrypoint php "$image" -l /var/www/bridge.php
 # Source patches: intervals, stale-lock minutes, feed ports (incl. a private port via ALLOW_PORTS)
 docker run --rm -i --entrypoint php -e TTRSS_ALLOW_PORTS=80,443,8877 -e TTRSS_UPDATE_LOCK_MINUTES=1 "$image" -- /dev/stdin < "$here/patches-test.php"
