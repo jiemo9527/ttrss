@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TT-RSS 主题效果图 · 现代企业风格</title>
+<style>
+/* Surface: Operate（像收件箱一样处理文章）——三栏：订阅树 / 标题列表 / 正文。
+   所有区域都对应 TT-RSS 现有组件：#feeds-holder、#toolbar-frame、#headlines-frame、#content-insert。 */
+:root{
+  --font: "Segoe UI Variable Text","Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --bg:#f4f5f7; --surface:#ffffff; --side:#f7f8fa; --hover:#eef1f5; --border:#e2e5ea; --border-strong:#d3d8df;
+  --ink:#16191d; --muted:#5a6370; --faint:#8b939e;
+  --accent:#0b5cad; --accent-ink:#ffffff; --accent-soft:#e6eef8; --accent-line:#bcd2ec;
+  --star:#c27c0e; --sel:#e6eef8; --sel-ink:#0a4a8c;
+  --shadow:0 1px 2px rgba(16,24,40,.06);
+  --row-pad:12px; --row-gap:4px; --excerpt:block;
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --bg:#0e1013; --surface:#15181c; --side:#111317; --hover:#1c2026; --border:#252a31; --border-strong:#323842;
+  --ink:#e7e9ec; --muted:#a3abb6; --faint:#737c88;
+  --accent:#5aa2f0; --accent-ink:#0b1420; --accent-soft:#16263a; --accent-line:#24405f;
+  --star:#e3a63a; --sel:#16263a; --sel-ink:#a9cdf5;
+  --shadow:0 1px 2px rgba(0,0,0,.4);
+  color-scheme:dark;
+}
+:root[data-density="compact"]{ --row-pad:7px; --row-gap:2px; --excerpt:none; }
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:var(--font);font-size:14px;color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+.tweaks{display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:8px 12px;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--surface)}
+.tweaks .seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:6px;overflow:hidden}
+.tweaks .seg button{border:0;background:transparent;padding:3px 10px;cursor:pointer;color:var(--muted)}
+.tweaks .seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.tweaks .note{margin-left:auto;color:var(--faint)}
+
+.app{display:grid;grid-template-columns:232px minmax(300px,360px) 1fr;height:720px;min-height:0;background:var(--surface);border-bottom:1px solid var(--border)}
+
+/* ---------- 订阅树 #feeds-holder ---------- */
+.side{background:var(--side);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+.brand{display:flex;align-items:center;gap:8px;height:52px;padding:0 16px;font-weight:600;font-size:15px;border-bottom:1px solid var(--border)}
+.brand .mark{width:22px;height:22px;border-radius:5px;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-size:12px;font-weight:700}
+.tree{overflow:auto;padding:8px 8px 16px;flex:1}
+.grp{margin-top:14px}
+.grp h3{margin:0 8px 4px;font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--faint);text-transform:uppercase;display:flex;justify-content:space-between}
+.node{display:flex;align-items:center;gap:9px;height:32px;padding:0 8px;border-radius:6px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.node:hover{background:var(--hover);color:var(--ink)}
+.node.active{background:var(--sel);color:var(--sel-ink);font-weight:600}
+.node .ic{width:16px;height:16px;flex:none;display:grid;place-items:center}
+.node .fav{width:16px;height:16px;border-radius:4px;flex:none;font-size:10px;font-weight:700;display:grid;place-items:center;color:#fff}
+.node .nm{flex:1;overflow:hidden;text-overflow:ellipsis}
+.node .ct{font-size:12px;font-variant-numeric:tabular-nums;color:var(--faint)}
+.node.unread .nm{color:var(--ink);font-weight:500}
+.node.active .ct{color:var(--sel-ink)}
+svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 工具栏 + 标题列表 #toolbar-frame / #headlines-frame ---------- */
+.list{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border)}
+.toolbar{height:52px;display:flex;align-items:center;gap:8px;padding:0 12px 0 16px;border-bottom:1px solid var(--border)}
+.toolbar h2{margin:0;font-size:15px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toolbar h2 small{font-weight:400;color:var(--faint);font-size:12px;margin-left:6px;font-variant-numeric:tabular-nums}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:1px solid var(--border-strong);background:var(--surface);border-radius:6px;cursor:pointer;font-size:13px;box-shadow:var(--shadow)}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.icon{width:30px;padding:0;justify-content:center}
+.filters{display:flex;gap:6px;align-items:center;padding:8px 12px 8px 16px;border-bottom:1px solid var(--border)}
+.chips{display:inline-flex;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:2px}
+.chips button{border:0;background:transparent;padding:3px 10px;border-radius:5px;font-size:12px;color:var(--muted);cursor:pointer}
+.chips button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-weight:600}
+.filters select{margin-left:auto;font:inherit;font-size:12px;color:var(--muted);background:transparent;border:0;cursor:pointer}
+.rows{overflow:auto;flex:1}
+.day{position:sticky;top:0;z-index:1;background:var(--surface);padding:10px 16px 4px;font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.04em}
+.hl{position:relative;display:grid;grid-template-columns:8px 1fr auto;column-gap:10px;row-gap:var(--row-gap);padding:var(--row-pad) 14px var(--row-pad) 12px;border-bottom:1px solid var(--border);cursor:pointer}
+.hl:hover{background:var(--hover)}
+.hl.selected{background:var(--sel)}
+.hl.selected::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+.hl .dot{width:7px;height:7px;border-radius:50%;margin-top:7px;background:transparent}
+.hl.unread .dot{background:var(--accent)}
+.hl .t{font-size:14px;line-height:1.45;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hl.unread .t{color:var(--ink);font-weight:600}
+.hl .tm{font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:2px}
+.hl .ex{grid-column:2/4;display:var(--excerpt);font-size:13px;line-height:1.5;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hl .meta{grid-column:2/4;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--faint)}
+.hl .meta .fav{width:14px;height:14px;border-radius:3px;font-size:9px;font-weight:700;display:grid;place-items:center;color:#fff}
+.hl .meta .st{margin-left:auto;color:var(--star);display:none}
+.hl.starred .meta .st{display:inline-flex}
+
+/* ---------- 正文 #content-insert ---------- */
+.reader{display:flex;flex-direction:column;min-height:0;min-width:0}
+.rbar{height:52px;display:flex;align-items:center;gap:6px;padding:0 16px;border-bottom:1px solid var(--border)}
+.rbar .sp{flex:1}
+.rbar .pos{font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums;margin-right:4px}
+.article{overflow:auto;flex:1}
+.article .in{max-width:680px;margin:0 auto;padding:28px 32px 48px}
+.src{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.src .fav{width:18px;height:18px;border-radius:4px;font-size:10px;font-weight:700;display:grid;place-items:center;color:#fff}
+.src b{color:var(--ink);font-weight:600}
+.article h1{font-size:24px;line-height:1.35;margin:12px 0 10px;font-weight:650;letter-spacing:-.01em;text-wrap:pretty}
+.byline{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;color:var(--faint);padding-bottom:16px;border-bottom:1px solid var(--border)}
+.tags{display:flex;gap:6px;margin-top:14px}
+.tag{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--sel-ink);border:1px solid var(--accent-line)}
+.body{font-size:15.5px;line-height:1.8;color:var(--ink)}
+.body p{margin:16px 0}
+.body h2{font-size:17px;margin:26px 0 6px}
+.body code{font-family:"Cascadia Mono",Consolas,monospace;font-size:13px;background:var(--bg);border:1px solid var(--border);padding:1px 5px;border-radius:4px}
+.body ul{padding-left:22px}
+.body li{margin:6px 0}
+.body a{color:var(--accent);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
+.figure{margin:20px 0;border:1px solid var(--border);border-radius:8px;background:var(--bg);height:150px;display:grid;place-items:center;color:var(--faint);font-size:12px}
+.foot{margin-top:28px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:8px}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (max-width:820px){ .app{grid-template-columns:1fr 1.3fr} .side{display:none} }
+@media (max-width:560px){ .app{grid-template-columns:1fr} .reader{display:none} }
+</style>
+</head>
+<body>
+<div class="tweaks" role="toolbar" aria-label="效果图选项">
+  <span>外观</span>
+  <span class="seg" data-key="theme"><button data-v="light" aria-pressed="true">浅色</button><button data-v="dark" aria-pressed="false">深色</button></span>
+  <span>密度</span>
+  <span class="seg" data-key="density"><button data-v="comfortable" aria-pressed="true">舒适</button><button data-v="compact" aria-pressed="false">紧凑</button></span>
+  <span class="note">效果示意 · 文章内容为示例</span>
+</div>
+
+<div class="app">
+  <!-- 订阅树 -->
+  <nav class="side" aria-label="订阅">
+    <div class="brand"><span class="mark">R</span>Tiny Tiny RSS</div>
+    <div class="tree">
+      <div class="node active unread"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h10"/></svg></span><span class="nm">全部文章</span><span class="ct">128</span></div>
+      <div class="node unread"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6 6l2 2M16 16l2 2M6 18l2-2M16 8l2-2"/></svg></span><span class="nm">新鲜文章</span><span class="ct">37</span></div>
+      <div class="node"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span><span class="nm">加星</span><span class="ct">12</span></div>
+      <div class="node"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M4 12h12M12 6l6 6-6 6"/></svg></span><span class="nm">已发布</span><span class="ct"></span></div>
+      <div class="node"><span class="ic"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="8"/></svg></span><span class="nm">最近阅读</span><span class="ct"></span></div>
+
+      <div class="grp"><h3><span>软件资讯</span></h3>
+        <div class="node unread"><span class="fav" style="background:#2f7d5b">小</span><span class="nm">小众软件</span><span class="ct">9</span></div>
+        <div class="node unread"><span class="fav" style="background:#b4532a">异</span><span class="nm">异次元软件世界</span><span class="ct">4</span></div>
+        <div class="node unread"><span class="fav" style="background:#6b5aa6">反</span><span class="nm">反斗软件</span><span class="ct">6</span></div>
+        <div class="node"><span class="fav" style="background:#3d4a5c">V</span><span class="nm">V2EX-最热主题</span><span class="ct"></span></div>
+      </div>
+      <div class="grp"><h3><span>GitHub 发布</span></h3>
+        <div class="node unread"><span class="fav" style="background:#24292f">L</span><span class="nm">LSPosed</span><span class="ct">1</span></div>
+        <div class="node unread"><span class="fav" style="background:#24292f">T</span><span class="nm">Thorium-Win</span><span class="ct">2</span></div>
+        <div class="node"><span class="fav" style="background:#24292f">M</span><span class="nm">Motrix</span><span class="ct"></span></div>
+        <div class="node unread"><span class="fav" style="background:#24292f">C</span><span class="nm">CLIProxyAPI</span><span class="ct">3</span></div>
+        <div class="node"><span class="fav" style="background:#24292f">R</span><span class="nm">revanced-magisk</span><span class="ct"></span></div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 标题列表 -->
+  <section class="list" aria-label="文章列表">
+    <div class="toolbar">
+      <h2>全部文章<small>128 未读</small></h2>
+      <button class="btn icon" title="刷新"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></button>
+      <button class="btn" title="全部标为已读"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg>全部已读</button>
+    </div>
+    <div class="filters">
+      <span class="chips" data-chips><button>全部</button><button class="on">未读</button><button>加星</button></span>
+      <select aria-label="排序"><option>最新在前</option><option>最早在前</option><option>按订阅源</option></select>
+    </div>
+    <div class="rows" id="rows">
+      <div class="day">今天</div>
+      <div class="hl unread selected" data-i="0"><span class="dot"></span><div class="t">开源剪贴板管理工具发布 2.0：支持多端同步与敏感内容自动过滤</div><span class="tm">14:52</span><div class="ex">新版本重写了同步引擎，局域网内设备可直接互传，无需登录账号……</div><div class="meta"><span class="fav" style="background:#2f7d5b">小</span>小众软件<span class="st"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:currentColor"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></div></div>
+      <div class="hl unread starred" data-i="1"><span class="dot"></span><div class="t">v1.11.0 正式版发布</div><span class="tm">13:30</span><div class="ex">Changelog：修复部分设备上模块作用域失效的问题，更新依赖……</div><div class="meta"><span class="fav" style="background:#24292f">L</span>LSPosed<span class="st"><svg width="13" height="13" viewBox="0 0 24 24" style="fill:currentColor"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></div></div>
+      <div class="hl unread" data-i="2"><span class="dot"></span><div class="t">Windows 上值得一试的五款窗口管理工具</div><span class="tm">11:08</span><div class="ex">从平铺布局到快捷键分屏，这几款工具能让多显示器办公更顺手……</div><div class="meta"><span class="fav" style="background:#b4532a">异</span>异次元软件世界<span class="st"></span></div></div>
+      <div class="hl" data-i="3"><span class="dot"></span><div class="t">Thorium M138 构建，含 AVX2 优化版本</div><span class="tm">09:41</span><div class="ex">本次构建同步 Chromium 上游安全修复，提供 SSE3 / AVX / AVX2 三个变体……</div><div class="meta"><span class="fav" style="background:#24292f">T</span>Thorium-Win<span class="st"></span></div></div>
+      <div class="day">昨天</div>
+      <div class="hl unread" data-i="4"><span class="dot"></span><div class="t">你们公司内部用什么做知识库？聊聊选型踩过的坑</div><span class="tm">22:16</span><div class="ex">从 Confluence 迁出之后试了三款开源方案，权限模型差别很大……</div><div class="meta"><span class="fav" style="background:#3d4a5c">V</span>V2EX-最热主题<span class="st"></span></div></div>
+      <div class="hl" data-i="5"><span class="dot"></span><div class="t">每周软件精选：截图标注、批量重命名与离线翻译</div><span class="tm">18:03</span><div class="ex">本周收录 7 款工具，其中两款为开源项目……</div><div class="meta"><span class="fav" style="background:#6b5aa6">反</span>反斗软件<span class="st"></span></div></div>
+      <div class="hl unread" data-i="6"><span class="dot"></span><div class="t">v6.3.2：新增请求重试与上游健康检查</div><span class="tm">15:47</span><div class="ex">What's Changed：支持按上游配置独立超时；修复流式响应偶发截断……</div><div class="meta"><span class="fav" style="background:#24292f">C</span>CLIProxyAPI<span class="st"></span></div></div>
+    </div>
+  </section>
+
+  <!-- 正文 -->
+  <article class="reader" aria-label="文章">
+    <div class="rbar">
+      <button class="btn icon" title="上一篇 (k)"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg></button>
+      <button class="btn icon" title="下一篇 (j)"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+      <span class="pos">1 / 128</span>
+      <span class="sp"></span>
+      <button class="btn icon" title="加星 (s)"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></button>
+      <button class="btn icon" title="标为未读 (u)"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></svg></button>
+      <button class="btn icon" title="编辑标签"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1"/></svg></button>
+      <button class="btn primary" title="打开原文 (o)"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>原文</button>
+    </div>
+    <div class="article"><div class="in" id="art">
+      <div class="src"><span class="fav" style="background:#2f7d5b">小</span><b>小众软件</b>· 今天 14:52</div>
+      <h1>开源剪贴板管理工具发布 2.0：支持多端同步与敏感内容自动过滤</h1>
+      <div class="byline"><span>作者 Appinn</span><span>阅读约 4 分钟</span><span>来源 appinn.com</span></div>
+      <div class="tags"><span class="tag">Windows</span><span class="tag">效率</span><span class="tag">开源</span></div>
+      <div class="body">
+        <p>这是一款免费开源的剪贴板历史工具，常驻托盘，按下 <code>Win + Shift + V</code> 即可唤出搜索框，支持文本、图片和文件三类记录。2.0 版本重写了同步引擎，局域网内的设备可以直接互传，不需要登录任何账号。</p>
+        <div class="figure">文章配图</div>
+        <h2>主要更新</h2>
+        <ul>
+          <li>局域网多端同步，传输端到端加密；</li>
+          <li>自动识别并跳过密码、验证码等敏感内容；</li>
+          <li>记录可按来源应用筛选，支持固定常用片段；</li>
+          <li>安装包体积减少约 40%。</li>
+        </ul>
+        <p>旧版本的历史记录会在首次启动时自动迁移。项目代码托管在 GitHub，采用 MIT 许可，详细说明见<a href="#">项目主页</a>。</p>
+      </div>
+      <div class="foot"><button class="btn">标为未读</button><button class="btn">分享</button><span style="flex:1"></span><button class="btn">下一篇 ›</button></div>
+    </div></div>
+  </article>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement, KEY='ttrss-theme-mock';
+  var state={theme:'light',density:'comfortable'};
+  try{Object.assign(state,JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){}
+  function apply(){
+    root.dataset.theme=state.theme; root.dataset.density=state.density;
+    document.querySelectorAll('.seg').forEach(function(seg){
+      seg.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed',String(state[seg.dataset.key]===b.dataset.v))});
+    });
+    try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}
+  }
+  document.querySelectorAll('.seg button').forEach(function(b){
+    b.addEventListener('click',function(){state[b.parentNode.dataset.key]=b.dataset.v;apply()});
+  });
+  document.querySelectorAll('[data-chips] button').forEach(function(b){
+    b.addEventListener('click',function(){b.parentNode.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===b)})});
+  });
+  var rows=[].slice.call(document.querySelectorAll('.hl')), pos=document.querySelector('.pos');
+  rows.forEach(function(r){
+    r.addEventListener('click',function(){
+      rows.forEach(function(x){x.classList.toggle('selected',x===r)});
+      r.classList.remove('unread');
+      pos.textContent=(rows.indexOf(r)+1)+' / 128';
+      var src=document.querySelector('#art .src'), h1=document.querySelector('#art h1'), m=r.querySelector('.meta');
+      src.innerHTML=m.querySelector('.fav').outerHTML+'<b>'+m.textContent.trim()+'</b>· '+r.querySelector('.tm').textContent;
+      h1.textContent=r.querySelector('.t').textContent;
+    });
+  });
+  apply();
+})();
+</script>
+</body>
+</html>

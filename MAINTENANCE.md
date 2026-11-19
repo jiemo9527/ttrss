@@ -13,6 +13,7 @@
   - `http://` 订阅上游本来就支持，无需修改。
   - 不会批量修改已有订阅的更新频率。
 - 维护 nginx 安全基线（`scripts/check-nginx-version.sh`：1.30.7+ 稳定版或 1.31.9+），构建和冒烟测试都会校验，低于基线直接失败。
+- **自带主题 `enterprise` / `enterprise_night` / `enterprise_auto`**（`themes/enterprise/`）：构建时用固定版本 TT-RSS 的 LESS 源码编译并放进 `themes.local/`，只是新增可选项，不改默认值和现有用户的选择。TT-RSS 升级后如果主题对应的上游结构变了，构建会直接失败，不会悄悄发出样式错乱的镜像。切换与回退方法见 [themes/enterprise/README.md](themes/enterprise/README.md)。
 - GitHub Actions 发布 `ghcr.io/jiemo9527/ttrss:<sha7>`、`<sha7>-<日期>` 和 `latest`，支持 amd64/arm64。每天重建一次，拉入 Alpine 的安全更新（nginx、PHP、OpenSSL 等）。生产建议固定带日期的标签；镜像发布不会自动部署到服务器。
 
 ## 配置
