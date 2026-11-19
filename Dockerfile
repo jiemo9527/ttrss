@@ -86,7 +86,7 @@ RUN for p in /tmp/patches/*.patch; do echo "applying $p"; git -C /ttrss apply --
 # Enterprise theme (themes/enterprise): compiled against the pinned TT-RSS LESS
 # sources with the less version TT-RSS itself locks. Purely additive files in
 # themes.local; users pick it per account and can switch back at any time.
-FROM --platform=$BUILDPLATFORM docker.io/node:22-alpine AS themes
+FROM --platform=$BUILDPLATFORM docker.io/node:26-alpine AS themes
 COPY --from=builder /ttrss/themes /ttrss/themes
 COPY --from=builder /ttrss/lib/flat-ttrss /ttrss/lib/flat-ttrss
 COPY --from=builder /ttrss/package-lock.json /ttrss/package-lock.json
