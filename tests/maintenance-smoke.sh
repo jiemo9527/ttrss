@@ -6,7 +6,8 @@ here=$(dirname "$0")
 sh "$here/../scripts/check-nginx-version.sh" \
   "$(docker run --rm --entrypoint nginx "$image" -v 2>&1 | sed -n 's|.*nginx/\([0-9][0-9.]*\).*|\1|p')"
 docker run --rm --entrypoint php "$image" -l /var/www/bridge.php
-docker run --rm --entrypoint php "$image" /apply-maintenance.php
+# Source patches: intervals, stale-lock minutes, feed ports (incl. a private port via ALLOW_PORTS)
+docker run --rm -i --entrypoint php -e TTRSS_ALLOW_PORTS=80,443,8877 -e TTRSS_UPDATE_LOCK_MINUTES=1 "$image" -- /dev/stdin < "$here/patches-test.php"
 docker run --rm --entrypoint nginx "$image" -t
 # Unauthenticated bridge must fail closed and never contact FlareSolverr.
 result=$(docker run --rm --entrypoint php "$image" /var/www/bridge.php)

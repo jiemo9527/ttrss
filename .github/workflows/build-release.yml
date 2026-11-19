@@ -29,9 +29,9 @@ jobs:
           fetch-depth: 0
       - name: Regression tests and lint
         run: |
-          php tests/maintenance.php
           php -l src/bridge.php
-          php -l src/apply-maintenance.php
+          php -l src/initialize.php
+          php -l tests/patches-test.php
           sh -n docker-entrypoint.sh
           sh -n scripts/check-nginx-version.sh
           sh scripts/check-nginx-version.sh 1.30.7

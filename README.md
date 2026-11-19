@@ -1,6 +1,6 @@
 # TTRSS 维护版
 
-自动跟进上游 Awesome-TTRSS / TT-RSS（每小时同步，测试通过后发布镜像），集成密钥挂载式 bridge、快速刷新选项，并保持 nginx 等系统组件的安全更新。
+自动跟进上游 Awesome-TTRSS / TT-RSS（每小时同步，测试通过后发布镜像），集成密钥挂载式 bridge、1/3/5/10 分钟刷新选项和非标准端口订阅（源码补丁，构建时打入），并保持 nginx 等系统组件的安全更新。
 
 完整说明、更新流程、部署边界见 **[MAINTENANCE.md](MAINTENANCE.md)**。
 

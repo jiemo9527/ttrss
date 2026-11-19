@@ -6,7 +6,12 @@
 
 - **自动同步上游**：每小时检查 Awesome-TTRSS 与 TT-RSS 应用；有更新时自动导入、全量测试（回归 + 镜像构建 + 订阅抓取 e2e），通过后快进 `main` 并发布镜像。`upstream-lock.json` 记录当前同步到的提交。
 - 集成 `src/bridge.php`：FlareSolverr RSS bridge，密钥只通过 `/etc/ttrss-bridge.key` 挂载；保留旧 `?key=` 用法，推荐 `X-Bridge-Key` 请求头，避免密钥进入 URL 日志。
-- 加入 1/3/5/10 分钟订阅刷新选项，默认将失效更新锁等待从 10 分钟减为 1 分钟。**不会批量修改用户已有订阅频率，不承诺所有文章一分钟内更新**，实际还受上游站点、并发及更新进程影响。
+- **对 TT-RSS 源码的修改放在 `patches/`**，构建时打进镜像（不是容器启动时注入）：
+  - 订阅更新间隔增加 **1/3/5/10 分钟**选项；
+  - 中断的更新多久后可重试改为可配置 `UPDATE_LOCK_MINUTES`（1–10，镜像默认 1，上游固定 10）；
+  - **订阅源可以用任意端口**（上游只允许 80/443）；内网地址只放行 `ALLOW_PORTS` 中的端口，本机回环和链路本地地址（含云厂商元数据 169.254.169.254）始终拒绝。
+  - `http://` 订阅上游本来就支持，无需修改。
+  - 不会批量修改已有订阅的更新频率。
 - 维护 nginx 安全基线（`scripts/check-nginx-version.sh`：1.30.7+ 稳定版或 1.31.9+），构建和冒烟测试都会校验，低于基线直接失败。
 - GitHub Actions 发布 `ghcr.io/jiemo9527/ttrss:<sha7>`、`<sha7>-<日期>` 和 `latest`，支持 amd64/arm64。每天重建一次，拉入 Alpine 的安全更新（nginx、PHP、OpenSSL 等）。生产建议固定带日期的标签；镜像发布不会自动部署到服务器。
 
@@ -14,13 +19,14 @@
 
 ```yaml
 environment:
-  TTRSS_FAST_REFRESH: "true"
-  TTRSS_UPDATE_LOCK_MINUTES: "1"  # 1..10
+  UPDATE_LOCK_MINUTES: "1"        # 1..10，中断的更新多少分钟后重试
+  ALLOW_PORTS: "80,443,8877"      # 内网订阅源允许的端口；公网源任意端口都可以
+  TTRSS_DAEMON_SLEEP_INTERVAL: "60"
 volumes:
   - ./secrets/bridge.key:/etc/ttrss-bridge.key:ro
 ```
 
-设 `TTRSS_FAST_REFRESH=false`，在新建容器时保留上游刷新默认值。Bridge 默认固定连接同网络 `http://flaresolverr:8191/v1`。密钥缺失/错误返回 403，上游失败返回 502，不输出原始上游内容或凭据。
+旧变量 `TTRSS_UPDATE_LOCK_MINUTES` 仍兼容；`TTRSS_FAST_REFRESH` 已废弃（1/3/5/10 分钟选项现在总是存在，选不选由你）。Bridge 默认固定连接同网络 `http://flaresolverr:8191/v1`。密钥缺失/错误返回 403，上游失败返回 502，不输出原始上游内容或凭据。
 
 **安全边界**：bridge 仅供受信任用户；FlareSolverr 可访问其网络并跟随跳转，密钥鉴权不等于 SSRF 隔离。限制 FlareSolverr 网络权限，不要将它直接暴露公网。`bridge.key`、数据库、真实 `.env`、生产 compose 不入库。部署时保留数据库和自有挂载，尤其不能删除原有 bridge key。
 
@@ -30,8 +36,9 @@ volumes:
 
 1. `scripts/sync-upstream.py --apply` 取 Awesome-TTRSS `main` 与 TT-RSS `main` 的最新提交。
 2. 容器上游的变更以补丁方式三方合并导入；本仓库自有的 `README.md`、`docker-compose.yml`、`.github/workflows`、`dependabot.yml` 不被覆盖，上游 README / workflows 归档到 `docs/` 供对照。TT-RSS 应用更新只改 `Dockerfile` 的 `TTRSS_REF`。
-3. 候选提交推到 `bot/upstream-sync`，跑完整测试；**全部通过才快进 `main`**，随后发布镜像。
-4. 冲突、上游历史改写或测试失败时不改 `main`，自动开一个 “Upstream sync needs attention” issue。
+3. 同步前会在新的 TT-RSS 提交上试打 `patches/*.patch`；打不上就停下。
+4. 候选提交推到 `bot/upstream-sync`，跑完整测试；**全部通过才快进 `main`**，随后发布镜像。
+5. 冲突、补丁打不上、上游历史改写或测试失败时不改 `main`，自动开一个 “Upstream sync needs attention” issue。
 
 手动处理冲突：
 
@@ -43,6 +50,18 @@ python scripts/sync-upstream.py --apply   # 本地生成同步提交，冲突时
 
 解决后提交、推送 `main`；`push` 会触发构建与发布。
 
+### 修改 / 新增 TT-RSS 源码补丁
+
+```sh
+git clone https://github.com/tt-rss/tt-rss /tmp/tt && cd /tmp/tt
+git checkout <Dockerfile 里的 TTRSS_REF>
+git apply /path/to/ttrss/patches/*.patch   # 先套上现有补丁
+# 修改代码……
+git diff > /path/to/ttrss/patches/0001-update-intervals-and-feed-ports.patch
+```
+
+补丁需要对应的测试写进 `tests/patches-test.php`（在构建好的镜像里运行）。
+
 其他说明：
 
 - 插件/主题仍按上游方式下载各自的移动分支，**未逐个锁定提交**，每次构建可能变化；不要把它当作完全可复现构建，部署前先测试。
@@ -52,7 +71,6 @@ python scripts/sync-upstream.py --apply   # 本地生成同步提交，冲突时
 ## 测试
 
 ```sh
-php tests/maintenance.php
 python tests/sync-upstream-test.py
 TEST_IMAGE=ghcr.io/jiemo9527/ttrss:<tag> sh tests/maintenance-smoke.sh
 IMAGE=ghcr.io/jiemo9527/ttrss:<tag> sh tests/e2e.local.sh   # 本机 Docker 跑订阅抓取 e2e
@@ -64,4 +82,4 @@ IMAGE=ghcr.io/jiemo9527/ttrss:<tag> sh tests/e2e.local.sh   # 本机 Docker 跑�
 
 ## 与现有部署迁移
 
-此仓库已内置 bridge 和快速刷新补丁，迁移后不要继续挂旧 `ttrss-entrypoint.sh` 覆盖入口；`bridge.php` 只读挂载也可在确认兼容后移除。**本仓库初次建立不自动迁移线上服务**，避免将应用更新/数据库 schema 更新与 nginx 安全修复混为一个不可回退操作。
+此仓库已内置 bridge 和源码补丁，迁移后不要继续挂旧 `ttrss-entrypoint.sh` 覆盖入口；`bridge.php` 只读挂载也可在确认兼容后移除。**本仓库初次建立不自动迁移线上服务**，避免将应用更新/数据库 schema 更新与 nginx 安全修复混为一个不可回退操作。

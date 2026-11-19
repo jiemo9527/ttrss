@@ -1,0 +1,112 @@
+diff --git a/classes/Config.php b/classes/Config.php
+index 14e18d3..ed9b570 100644
+--- a/classes/Config.php
++++ b/classes/Config.php
+@@ -157,6 +157,13 @@ class Config {
+ 	/** default sleep interval between feed updates (sec) */
+ 	const DAEMON_SLEEP_INTERVAL = "DAEMON_SLEEP_INTERVAL";
+ 
++	/** minutes after which a feed update that did not finish is considered stale and retried (1-10) */
++	const UPDATE_LOCK_MINUTES = "UPDATE_LOCK_MINUTES";
++
++	/** comma-separated extra ports on which private-network (RFC1918/ULA) feed hosts may be fetched;
++	 * public hosts may use any port */
++	const ALLOW_PORTS = "ALLOW_PORTS";
++
+ 	/** do not cache files larger than that (bytes) */
+ 	const MAX_CACHE_FILE_SIZE = "MAX_CACHE_FILE_SIZE";
+ 
+@@ -286,6 +293,8 @@ class Config {
+ 		Config::DAEMON_UPDATE_LOGIN_LIMIT => [ 30,					Config::T_INT ],
+ 		Config::DAEMON_FEED_LIMIT => [ 50,								Config::T_INT ],
+ 		Config::DAEMON_SLEEP_INTERVAL => [ 120,						Config::T_INT ],
++		Config::UPDATE_LOCK_MINUTES => [ 10,							Config::T_INT ],
++		Config::ALLOW_PORTS => [ "80,443",							Config::T_STRING ],
+ 		Config::MAX_CACHE_FILE_SIZE => [ 64*1024*1024,				Config::T_INT ],
+ 		Config::MAX_DOWNLOAD_FILE_SIZE => [ 16*1024*1024,			Config::T_INT ],
+ 		Config::MAX_FAVICON_FILE_SIZE => [ 1*1024*1024,				Config::T_INT ],
+diff --git a/classes/Feeds.php b/classes/Feeds.php
+index fab0f0e..fceac22 100644
+--- a/classes/Feeds.php
++++ b/classes/Feeds.php
+@@ -2442,6 +2442,10 @@ class Feeds extends Handler_Protected {
+ 		$x = [
+ 			-1 => __('Disable updates'),
+ 			0 => __('Default interval'),
++			1 => __('1 minute'),
++			3 => __('3 minutes'),
++			5 => __('5 minutes'),
++			10 => __('10 minutes'),
+ 			15 => __('15 minutes'),
+ 			30 => __('30 minutes'),
+ 			60 => __('Hourly'),
+diff --git a/classes/RSSUtils.php b/classes/RSSUtils.php
+index ffec9e2..b2effe7 100644
+--- a/classes/RSSUtils.php
++++ b/classes/RSSUtils.php
+@@ -123,6 +123,7 @@ class RSSUtils {
+ 		}
+ 
+ 		$default_interval = (int) Prefs::get_default(Prefs::DEFAULT_UPDATE_INTERVAL);
++		$lock_minutes = max(1, min(10, (int) Config::get(Config::UPDATE_LOCK_MINUTES)));
+ 
+ 		$update_limit_qpart = "AND ((
+ 				update_interval = 0
+@@ -150,7 +151,7 @@ class RSSUtils {
+ 				u.access_level NOT IN (".sprintf("%d, %d", UserHelper::ACCESS_LEVEL_DISABLED, UserHelper::ACCESS_LEVEL_READONLY).")
+ 				$login_thresh_qpart
+ 				$update_limit_qpart
+-				AND (last_update_started IS NULL OR last_update_started < NOW() - INTERVAL '10 minute')
++				AND (last_update_started IS NULL OR last_update_started < NOW() - INTERVAL '$lock_minutes minute')
+ 				ORDER BY last_updated NULLS FIRST $query_limit";
+ 
+ 		Debug::log("base feed query: $query", Debug::LOG_EXTENDED);
+diff --git a/classes/UrlHelper.php b/classes/UrlHelper.php
+index 0e02f7f..c9c8dcb 100644
+--- a/classes/UrlHelper.php
++++ b/classes/UrlHelper.php
+@@ -218,9 +218,8 @@ class UrlHelper {
+ 			return false;
+ 
+ 		if (!getenv('IS_INTEGRATION_TESTING') && $extended_filtering) {
+-			if (!in_array($tokens['port'] ?? '', [80, 443, '']))
+-				return false;
+-
++			// Any port is allowed for public hosts; private addresses are limited to
++			// standard ports and ALLOW_PORTS (see has_disallowed_ip()).
+ 			if (self::has_disallowed_ip($tokens, true))
+ 				return false;
+ 		}
+@@ -274,6 +273,23 @@ class UrlHelper {
+ 	 * @param bool $validate_resolved_ip whether to perform additional validation by resolving the host to an IP and validating that IP
+ 	 * @return bool true if the URL should be rejected, false otherwise
+ 	 */
++	/**
++	 * Ports on which private-network hosts may be fetched: 80, 443 and Config::ALLOW_PORTS.
++	 * @return array<int>
++	 */
++	static function private_ports(): array {
++		$ports = [80, 443];
++
++		foreach (explode(',', (string) Config::get(Config::ALLOW_PORTS)) as $p) {
++			$p = trim($p);
++
++			if (ctype_digit($p) && (int) $p > 0 && (int) $p < 65536)
++				$ports[] = (int) $p;
++		}
++
++		return array_values(array_unique($ports));
++	}
++
+ 	static function has_disallowed_ip(string|array $url_or_tokens, bool $validate_resolved_ip = false): bool {
+ 		$tokens = is_array($url_or_tokens) ? $url_or_tokens : parse_url($url_or_tokens);
+ 
+@@ -282,7 +298,7 @@ class UrlHelper {
+ 
+ 		$host = trim(strtolower($tokens['host']), '[].');
+ 		$port = $tokens['port'] ?? null;
+-		$is_standard_port = ($port === null || $port === 80 || $port === 443);
++		$is_standard_port = ($port === null || in_array((int) $port, self::private_ports(), true));
+ 
+ 		if ($host === '' || $host === 'localhost')
+ 			return true;
