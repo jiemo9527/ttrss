@@ -83,6 +83,20 @@ COPY patches/ /tmp/patches/
 RUN for p in /tmp/patches/*.patch; do echo "applying $p"; git -C /ttrss apply --whitespace=nowarn "$p" || exit 1; done \
   && git -C /ttrss status --short
 
+# Enterprise theme (themes/enterprise): compiled against the pinned TT-RSS LESS
+# sources with the less version TT-RSS itself locks. Purely additive files in
+# themes.local; users pick it per account and can switch back at any time.
+FROM --platform=$BUILDPLATFORM docker.io/node:22-alpine AS themes
+COPY --from=builder /ttrss/themes /ttrss/themes
+COPY --from=builder /ttrss/lib/flat-ttrss /ttrss/lib/flat-ttrss
+COPY --from=builder /ttrss/package-lock.json /ttrss/package-lock.json
+COPY themes/enterprise/ /src/enterprise/
+RUN set -e \
+  && LESS_VERSION=$(node -p "require('/ttrss/package-lock.json').packages['node_modules/less'].version") \
+  && mkdir /build && cd /build && npm init -y >/dev/null \
+  && npm install --no-audit --no-fund --ignore-scripts "less@${LESS_VERSION}" \
+  && node /src/enterprise/build.mjs --ttrss /ttrss --out /out --node-modules /build
+
 FROM docker.io/alpine:3.24
 
 LABEL maintainer="Henry<hi@henry.wang>"
@@ -149,6 +163,7 @@ ENV LD_PRELOAD="/usr/lib/preloadable_libiconv.so php"
 # Copy TTRSS and plugins
 COPY --from=builder --chown=nobody:nginx /ttrss /var/www
 COPY --from=builder --chown=nobody:nginx /var/www /var/www
+COPY --from=themes --chown=nobody:nginx /out/ /var/www/themes.local/
 COPY src/bridge.php /var/www/bridge.php
 
 RUN git config --global --add safe.directory /var/www \
