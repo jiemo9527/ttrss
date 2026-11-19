@@ -77,6 +77,11 @@ RUN git init /ttrss \
   && rm -rf /ttrss/tests \
   && find /ttrss -mindepth 1 -maxdepth 1 -name ".*" ! -name ".git" -exec rm -rf {} +
 
+# Local source changes to TT-RSS (update intervals, feed ports). A patch that no
+# longer applies to the pinned TTRSS_REF fails the build instead of being skipped.
+COPY patches/ /tmp/patches/
+RUN for p in /tmp/patches/*.patch; do echo "applying $p"; git -C /ttrss apply --whitespace=nowarn "$p" || exit 1; done \n  && git -C /ttrss status --short
+
 FROM docker.io/alpine:3.24
 
 LABEL maintainer="Henry<hi@henry.wang>"
@@ -96,10 +101,11 @@ ENV SESSION_COOKIE_LIFETIME=24
 ENV SINGLE_USER_MODE=false
 ENV LOG_DESTINATION=sql
 ENV FEED_LOG_QUIET=false
-ENV TTRSS_FAST_REFRESH=true
-ENV TTRSS_UPDATE_LOCK_MINUTES=1
+# Minutes before an unfinished feed update is considered stale and retried (1-10, upstream: 10)
+ENV UPDATE_LOCK_MINUTES=1
 
-# Open up ports to bypass ttrss strict port checks, USE WITH CAUTION
+# Feeds on public hosts may use any port. Private-network hosts (10/8, 172.16/12,
+# 192.168/16, fc00::/7) are only fetched on these ports. Loopback/link-local are always blocked.
 ENV ALLOW_PORTS="80,443"
 
 ENV PHP_SUFFIX=85
@@ -143,7 +149,6 @@ ENV LD_PRELOAD="/usr/lib/preloadable_libiconv.so php"
 COPY --from=builder --chown=nobody:nginx /ttrss /var/www
 COPY --from=builder --chown=nobody:nginx /var/www /var/www
 COPY src/bridge.php /var/www/bridge.php
-COPY src/apply-maintenance.php /apply-maintenance.php
 
 RUN git config --global --add safe.directory /var/www \
   # https://github.com/tt-rss/tt-rss/commit/f57bb8ec244c39615d4ab247a7016aded11080a2

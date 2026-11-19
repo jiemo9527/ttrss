@@ -114,8 +114,36 @@ def test_conflict(tmp):
     check(git(fork, 'status', '--porcelain') == '', 'conflict must leave a clean tree')
 
 
+APP_PATCH = '''diff --git a/f b/f
+--- a/f
++++ b/f
+@@ -1 +1 @@
+-%s
++patched
+'''
+
+
+def test_app_patch_still_applies(tmp):
+    up, app, fork, b, p2 = setup(tmp, 'line1\nline2\nfork line\n')
+    # app P2 changes f to "2"; a patch written against "2" applies cleanly.
+    commit(fork, {'patches/0001-x.patch': APP_PATCH % '2'}, 'add app patch')
+    rc, out, err = run_sync(fork, up, app, '--apply')
+    check(rc == 0 and out.get('changed') == 'true', 'sync with applicable patch failed: ' + err)
+
+
+def test_app_patch_broken(tmp):
+    up, app, fork, b, p2 = setup(tmp, 'line1\nline2\nfork line\n')
+    # patch written against the old "1" no longer applies once tt-rss moves to P2.
+    head = commit(fork, {'patches/0001-x.patch': APP_PATCH % '1'}, 'add app patch')
+    rc, out, err = run_sync(fork, up, app, '--apply')
+    check(rc == 2 and out.get('conflict') == 'true', 'broken patch not reported: rc=%s %s' % (rc, err))
+    check('0001-x.patch' in err, 'broken patch name not reported: ' + err)
+    check(git(fork, 'rev-parse', 'HEAD') == head, 'broken patch must not commit')
+    check(git(fork, 'status', '--porcelain') == '', 'broken patch must leave a clean tree')
+
+
 def main():
-    for test in (test_clean_sync, test_conflict):
+    for test in (test_clean_sync, test_conflict, test_app_patch_still_applies, test_app_patch_broken):
         tmp = pathlib.Path(tempfile.mkdtemp(prefix='ttrss-sync-'))
         try:
             test(tmp)

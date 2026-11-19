@@ -15,6 +15,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
 
 CONTAINER_URL = 'https://github.com/HenryQW/Awesome-TTRSS.git'
 APP_URL = 'https://github.com/tt-rss/tt-rss.git'
@@ -43,6 +44,24 @@ def remote_head(repo, url, branch):
 
 def fetch(repo, url, sha):
     git(repo, 'fetch', '--no-tags', '--quiet', url, sha)
+
+
+def patches_apply(repo, app_url, sha):
+    """Return the names of patches/*.patch that do not apply cleanly to tt-rss `sha`."""
+    patches = sorted((pathlib.Path(repo) / 'patches').glob('*.patch'))
+    if not patches:
+        return []
+    with tempfile.TemporaryDirectory(prefix='ttrss-app-') as tmp:
+        subprocess.run(['git', 'init', '-q', tmp], check=True)
+        git(tmp, 'fetch', '--no-tags', '--quiet', '--depth=1', app_url, sha)
+        git(tmp, '-c', 'core.autocrlf=false', 'checkout', '--quiet', '--detach', 'FETCH_HEAD')
+        failed = []
+        for p in patches:
+            if git(tmp, 'apply', '--check', '--whitespace=nowarn', str(p), check=False).returncode:
+                failed.append(p.name)
+            else:
+                git(tmp, 'apply', '--whitespace=nowarn', str(p))
+        return failed
 
 
 def emit(path, values):
@@ -141,6 +160,14 @@ def main():
         dockerfile.write_bytes(text.encode('utf-8'))
         app['commit'] = new_app
         git(repo, 'add', 'Dockerfile')
+
+    failed = patches_apply(repo, a.app_url, app['commit'])
+    if failed:
+        git(repo, 'reset', '--hard', '--quiet', 'HEAD')
+        print('local patches no longer apply to tt-rss %s: %s' % (app['commit'][:7], ', '.join(failed)),
+              file=sys.stderr)
+        emit(a.github_output, {'changed': 'false', 'conflict': 'true', 'key': key})
+        return 2
 
     lock_path.write_text(json.dumps(lock, indent=2) + '\n', encoding='utf-8', newline='\n')
     git(repo, 'add', 'upstream-lock.json')
