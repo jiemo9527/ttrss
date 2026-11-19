@@ -80,7 +80,8 @@ RUN git init /ttrss \
 # Local source changes to TT-RSS (update intervals, feed ports). A patch that no
 # longer applies to the pinned TTRSS_REF fails the build instead of being skipped.
 COPY patches/ /tmp/patches/
-RUN for p in /tmp/patches/*.patch; do echo "applying $p"; git -C /ttrss apply --whitespace=nowarn "$p" || exit 1; done \n  && git -C /ttrss status --short
+RUN for p in /tmp/patches/*.patch; do echo "applying $p"; git -C /ttrss apply --whitespace=nowarn "$p" || exit 1; done \
+  && git -C /ttrss status --short
 
 FROM docker.io/alpine:3.24
 
