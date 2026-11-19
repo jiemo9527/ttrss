@@ -4,11 +4,11 @@
 
 ## 本仓库维护范围
 
-- 跟踪容器上游与 TT-RSS 应用更新，`upstream-lock.json` 记录审阅的应用/容器提交。
+- **自动同步上游**：每小时检查 Awesome-TTRSS 与 TT-RSS 应用；有更新时自动导入、全量测试（回归 + 镜像构建 + 订阅抓取 e2e），通过后快进 `main` 并发布镜像。`upstream-lock.json` 记录当前同步到的提交。
 - 集成 `src/bridge.php`：FlareSolverr RSS bridge，密钥只通过 `/etc/ttrss-bridge.key` 挂载；保留旧 `?key=` 用法，推荐 `X-Bridge-Key` 请求头，避免密钥进入 URL 日志。
 - 加入 1/3/5/10 分钟订阅刷新选项，默认将失效更新锁等待从 10 分钟减为 1 分钟。**不会批量修改用户已有订阅频率，不承诺所有文章一分钟内更新**，实际还受上游站点、并发及更新进程影响。
-- 维护 nginx 安全基线，当前要求 1.30.7；CI 验证 PHP、配置、刷新补丁和未鉴权 bridge 拒绝访问。
-- GitHub Actions 发布 `ghcr.io/jiemo9527/ttrss:<commit前7位>` 和 `latest`，支持 amd64/arm64。生产固定 SHA 标签；不要仅因定时构建成功自动部署。
+- 维护 nginx 安全基线（`scripts/check-nginx-version.sh`：1.30.7+ 稳定版或 1.31.9+），构建和冒烟测试都会校验，低于基线直接失败。
+- GitHub Actions 发布 `ghcr.io/jiemo9527/ttrss:<sha7>`、`<sha7>-<日期>` 和 `latest`，支持 amd64/arm64。每天重建一次，拉入 Alpine 的安全更新（nginx、PHP、OpenSSL 等）。生产建议固定带日期的标签；镜像发布不会自动部署到服务器。
 
 ## 配置
 
@@ -26,19 +26,41 @@ volumes:
 
 ## 更新流程
 
-1. `git fetch upstream`，审阅 `upstream/main` 的变化；合并时保留 maintenance 文件和 workflow。
-2. `python scripts/check-upstream.py` 检查应用/容器来源；有更新时先审阅再同时调整 `upstream-lock.json` 与 Dockerfile 中 `TTRSS_REF`。
-3. 插件/主题仍沿用上游的移动分支下载方式，**尚未逐个锁定提交**；定时构建可能改变这些内容，部署前必须测试，不将它称为完全可复现构建。
-4. 安全更新不能只比较应用 SHA：系统包/插件也可能更新。本仓库每周构建，保持 nginx 版本检查；未来安全基线上调时修改 Dockerfile 与 smoke test。
-5. 发布后对候选镜像做独立数据库测试；备份数据库后在维护窗口切换，仅替换应用容器，不升级 PostgreSQL 主版本。
+自动（`.github/workflows/upstream.yml`，每小时第 7 分钟，也可手动触发）：
+
+1. `scripts/sync-upstream.py --apply` 取 Awesome-TTRSS `main` 与 TT-RSS `main` 的最新提交。
+2. 容器上游的变更以补丁方式三方合并导入；本仓库自有的 `README.md`、`docker-compose.yml`、`.github/workflows`、`dependabot.yml` 不被覆盖，上游 README / workflows 归档到 `docs/` 供对照。TT-RSS 应用更新只改 `Dockerfile` 的 `TTRSS_REF`。
+3. 候选提交推到 `bot/upstream-sync`，跑完整测试；**全部通过才快进 `main`**，随后发布镜像。
+4. 冲突、上游历史改写或测试失败时不改 `main`，自动开一个 “Upstream sync needs attention” issue。
+
+手动处理冲突：
+
+```sh
+git fetch upstream
+python scripts/sync-upstream.py           # 只检查
+python scripts/sync-upstream.py --apply   # 本地生成同步提交，冲突时报告文件
+```
+
+解决后提交、推送 `main`；`push` 会触发构建与发布。
+
+其他说明：
+
+- 插件/主题仍按上游方式下载各自的移动分支，**未逐个锁定提交**，每次构建可能变化；不要把它当作完全可复现构建，部署前先测试。
+- 安全基线上调时，修改 `scripts/check-nginx-version.sh`（构建和冒烟测试共用）。
+- 生产切换：先用独立数据库验证候选镜像，备份数据库后在维护窗口只替换应用容器，不升级 PostgreSQL 主版本。
 
 ## 测试
 
 ```sh
 php tests/maintenance.php
-TEST_IMAGE=ghcr.io/jiemo9527/ttrss:<sha7> sh tests/maintenance-smoke.sh
-python scripts/check-upstream.py
+python tests/sync-upstream-test.py
+TEST_IMAGE=ghcr.io/jiemo9527/ttrss:<tag> sh tests/maintenance-smoke.sh
+IMAGE=ghcr.io/jiemo9527/ttrss:<tag> sh tests/e2e.local.sh   # 本机 Docker 跑订阅抓取 e2e
 ```
+
+## 快速刷新的实际效果
+
+刷新频率由两部分决定：订阅的更新间隔（1/3/5/10 分钟选项），以及更新守护进程的轮询间隔 `TTRSS_DAEMON_SLEEP_INTERVAL`（TT-RSS 默认 **120 秒**）。想让 1 分钟选项真正生效，还需设置 `TTRSS_DAEMON_SLEEP_INTERVAL=60`；订阅数量多时同时关注 `TTRSS_DAEMON_MAX_JOBS`、`TTRSS_DAEMON_FEED_LIMIT`。
 
 ## 与现有部署迁移
 

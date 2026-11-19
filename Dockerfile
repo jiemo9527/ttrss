@@ -108,6 +108,8 @@ ENV SCRIPT_ROOT=/var/www
 
 WORKDIR /var/www
 
+COPY scripts/check-nginx-version.sh /tmp/check-nginx-version.sh
+
 # Install dependencies
 RUN set -ex \
   && PHP_PACKAGES="fpm ctype curl dom exif fileinfo gd iconv intl json mbstring \
@@ -121,7 +123,7 @@ RUN set -ex \
   php${PHP_SUFFIX} $EXT_LIST \
   imagemagick-heic imagemagick-svg \
   ca-certificates && rm -rf /var/cache/apk/* \
-  && nginx -v 2>&1 | grep -F 'nginx/1.30.7' \
+  && sh /tmp/check-nginx-version.sh && rm /tmp/check-nginx-version.sh \
   && if [ ! -e /usr/bin/php ]; then ln -s /usr/bin/php${PHP_SUFFIX} /usr/bin/php; fi \
   && echo -e "opcache.enable_cli=1\nopcache.jit=1255\nopcache.jit_buffer_size=64M" >> /etc/php${PHP_SUFFIX}/php.ini \
   && echo 'env[SCRIPT_ROOT] = $SCRIPT_ROOT' >> /etc/php${PHP_SUFFIX}/php-fpm.d/www.conf \
