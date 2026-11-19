@@ -1,0 +1,12 @@
+{
+  "container": {
+    "repository": "HenryQW/Awesome-TTRSS",
+    "branch": "main",
+    "commit": "d0d7506e31c1c6d4af406abbcfa5843113e40074"
+  },
+  "application": {
+    "repository": "tt-rss/tt-rss",
+    "branch": "main",
+    "commit": "f9f25914cd4783591f1b7767d63731717e8e95f8"
+  }
+}

@@ -1,6 +1,6 @@
 services:
   service.ttrss:
-    image: wangqiru/ttrss:nightly
+    image: ghcr.io/jiemo9527/ttrss:latest
     container_name: ttrss
     ports:
       - 181:80

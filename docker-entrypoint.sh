@@ -2,6 +2,8 @@
 
 set -e
 
+php /apply-maintenance.php
+
 # reset previously modified UrlHelper.php, in case ALLOW_PORTS is updated
 git checkout -- /var/www/classes/UrlHelper.php
 

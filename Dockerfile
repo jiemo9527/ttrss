@@ -2,8 +2,7 @@ FROM docker.io/alpine:3.24 AS builder
 
 RUN apk add --update tar curl git gcc musl-dev gnu-libiconv-dev
 
-# https://stackoverflow.com/questions/36996046/how-to-prevent-dockerfile-caching-git-clone
-ADD https://api.github.com/repos/tt-rss/tt-rss/git/refs/heads/main /ttrss-version
+ARG TTRSS_REF=f9f25914cd4783591f1b7767d63731717e8e95f8
 
 # Download plugins
 WORKDIR /var/www/plugins.local
@@ -71,7 +70,10 @@ COPY src/preloadable_libiconv.c /tmp/
 RUN gcc -shared -fPIC -O2 -o /preloadable_libiconv.so /tmp/preloadable_libiconv.c -liconv
 
 # Download ttrss via git
-RUN git clone https://github.com/tt-rss/tt-rss --depth=1 /ttrss \
+RUN git init /ttrss \
+  && git -C /ttrss remote add origin https://github.com/tt-rss/tt-rss \
+  && git -C /ttrss fetch --depth=1 origin "$TTRSS_REF" \
+  && git -C /ttrss checkout --detach FETCH_HEAD \
   && rm -rf /ttrss/tests \
   && find /ttrss -mindepth 1 -maxdepth 1 -name ".*" ! -name ".git" -exec rm -rf {} +
 
@@ -94,6 +96,8 @@ ENV SESSION_COOKIE_LIFETIME=24
 ENV SINGLE_USER_MODE=false
 ENV LOG_DESTINATION=sql
 ENV FEED_LOG_QUIET=false
+ENV TTRSS_FAST_REFRESH=true
+ENV TTRSS_UPDATE_LOCK_MINUTES=1
 
 # Open up ports to bypass ttrss strict port checks, USE WITH CAUTION
 ENV ALLOW_PORTS="80,443"
@@ -117,6 +121,7 @@ RUN set -ex \
   php${PHP_SUFFIX} $EXT_LIST \
   imagemagick-heic imagemagick-svg \
   ca-certificates && rm -rf /var/cache/apk/* \
+  && nginx -v 2>&1 | grep -F 'nginx/1.30.7' \
   && if [ ! -e /usr/bin/php ]; then ln -s /usr/bin/php${PHP_SUFFIX} /usr/bin/php; fi \
   && echo -e "opcache.enable_cli=1\nopcache.jit=1255\nopcache.jit_buffer_size=64M" >> /etc/php${PHP_SUFFIX}/php.ini \
   && echo 'env[SCRIPT_ROOT] = $SCRIPT_ROOT' >> /etc/php${PHP_SUFFIX}/php-fpm.d/www.conf \
@@ -135,6 +140,8 @@ ENV LD_PRELOAD="/usr/lib/preloadable_libiconv.so php"
 # Copy TTRSS and plugins
 COPY --from=builder --chown=nobody:nginx /ttrss /var/www
 COPY --from=builder --chown=nobody:nginx /var/www /var/www
+COPY src/bridge.php /var/www/bridge.php
+COPY src/apply-maintenance.php /apply-maintenance.php
 
 RUN git config --global --add safe.directory /var/www \
   # https://github.com/tt-rss/tt-rss/commit/f57bb8ec244c39615d4ab247a7016aded11080a2
