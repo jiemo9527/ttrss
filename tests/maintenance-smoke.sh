@@ -1,8 +1,10 @@
 #!/bin/sh
 set -eu
 image=${TEST_IMAGE:?TEST_IMAGE is required}
-docker pull "$image"
-docker run --rm --entrypoint nginx "$image" -v 2>&1 | grep -F 'nginx/1.30.7'
+if [ "${SMOKE_PULL:-0}" = 1 ]; then docker pull "$image"; fi
+here=$(dirname "$0")
+sh "$here/../scripts/check-nginx-version.sh" \
+  "$(docker run --rm --entrypoint nginx "$image" -v 2>&1 | sed -n 's|.*nginx/\([0-9][0-9.]*\).*|\1|p')"
 docker run --rm --entrypoint php "$image" -l /var/www/bridge.php
 docker run --rm --entrypoint php "$image" /apply-maintenance.php
 docker run --rm --entrypoint nginx "$image" -t

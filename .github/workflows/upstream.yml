@@ -1,16 +1,112 @@
-name: Check upstream
+name: Sync upstream
+# Hourly: import Awesome-TTRSS changes and the latest tt-rss commit, run the
+# full test suite on the candidate, fast-forward main, then publish images.
+# Conflicts or failing tests never reach main; they open an issue instead.
 on:
   workflow_dispatch:
   schedule:
-    - cron: '17 2 * * *'
+    - cron: '7 * * * *'
 permissions:
   contents: read
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
 jobs:
-  report:
+  sync:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      changed: ${{ steps.sync.outputs.changed }}
+      conflict: ${{ steps.sync.outputs.conflict }}
+      sha: ${{ steps.sync.outputs.sha }}
+      key: ${{ steps.sync.outputs.key }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
         with:
-          python-version: '3.12'
-      - run: python scripts/check-upstream.py | tee -a "$GITHUB_STEP_SUMMARY"
+          ref: main
+          fetch-depth: 0
+      - id: sync
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          set +e
+          python3 scripts/sync-upstream.py --apply
+          rc=$?
+          set -e
+          if [ "$rc" = 2 ]; then exit 0; fi
+          exit "$rc"
+      - name: Push candidate branch
+        if: steps.sync.outputs.changed == 'true'
+        run: git push --force origin HEAD:refs/heads/bot/upstream-sync
+      - name: Summary
+        run: |
+          {
+            echo "### Upstream sync"
+            echo "- changed: ${{ steps.sync.outputs.changed }}"
+            echo "- conflict: ${{ steps.sync.outputs.conflict || 'false' }}"
+            echo "- upstream key: ${{ steps.sync.outputs.key }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  verify:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    uses: ./.github/workflows/build-release.yml
+    with:
+      ref: ${{ needs.sync.outputs.sha }}
+      publish: 'false'
+    permissions:
+      contents: read
+      packages: write
+
+  promote:
+    needs: [sync, verify]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Fast-forward main
+        run: |
+          git fetch origin bot/upstream-sync
+          test "$(git rev-parse FETCH_HEAD)" = "${{ needs.sync.outputs.sha }}"
+          git merge --ff-only "${{ needs.sync.outputs.sha }}"
+          git push origin HEAD:refs/heads/main
+          git push origin --delete bot/upstream-sync
+
+  publish:
+    needs: [sync, promote]
+    uses: ./.github/workflows/build-release.yml
+    with:
+      ref: ${{ needs.sync.outputs.sha }}
+      publish: 'true'
+    permissions:
+      contents: read
+      packages: write
+
+  report:
+    needs: [sync, verify, promote, publish]
+    if: always() && (needs.sync.result == 'failure' || needs.sync.outputs.conflict == 'true' || needs.verify.result == 'failure' || needs.promote.result == 'failure' || needs.publish.result == 'failure')
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TITLE: Upstream sync needs attention
+      BODY: |
+        Automatic upstream sync stopped. If verify failed, main was not changed; if publish failed, main already contains the sync commit but images were not updated.
+
+        - upstream key: ${{ needs.sync.outputs.key }}
+        - sync: ${{ needs.sync.result }} (conflict: ${{ needs.sync.outputs.conflict || 'false' }})
+        - verify: ${{ needs.verify.result }} / promote: ${{ needs.promote.result }} / publish: ${{ needs.publish.result }}
+        - run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+        Resolve manually (see MAINTENANCE.md) and close this issue.
+    steps:
+      - run: |
+          n=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')
+          if [ -n "$n" ]; then gh issue comment "$n" --body "$BODY"; else gh issue create --title "$TITLE" --body "$BODY"; fi
