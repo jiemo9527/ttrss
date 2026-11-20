@@ -123,9 +123,9 @@ ENV UPDATE_LOCK_MINUTES=1
 # 192.168/16, fc00::/7) are only fetched on these ports. Loopback/link-local are always blocked.
 ENV ALLOW_PORTS="80,443"
 
-# 固定 PHP 8.3.36；后续安全版本确认后再更新，不在重建时隐式换版。
+# 固定 PHP 8.3.37；后续安全版本确认后再更新，不在重建时隐式换版。
 ENV PHP_SUFFIX=83
-ARG PHP_PACKAGE_VERSION=8.3.36-r0
+ARG PHP_PACKAGE_VERSION=8.3.37-r0
 
 ENV SCRIPT_ROOT=/var/www
 

@@ -12,7 +12,7 @@
   - **订阅源可以用任意端口**（上游只允许 80/443）；内网地址只放行 `ALLOW_PORTS` 中的端口，本机回环和链路本地地址（含云厂商元数据 169.254.169.254）始终拒绝。
   - `http://` 订阅上游本来就支持，无需修改。
   - 不会批量修改已有订阅的更新频率。
-- PHP 固定为 **8.3.36**（Alpine 包 `php83=8.3.36-r0`），CLI、PHP-FPM 与 OPcache 在镜像测试中校验；后续安全补丁确认后再更新 Dockerfile 的 `PHP_PACKAGE_VERSION` 与对应测试。每日重建不自动更换 PHP 补丁版本。
+- PHP 固定为 **8.3.37**（Alpine 包 `php83=8.3.37-r0`），CLI、PHP-FPM 与 OPcache 在镜像测试中校验；后续安全补丁确认后再更新 Dockerfile 的 `PHP_PACKAGE_VERSION` 与对应测试。每日重建不自动更换 PHP 补丁版本。
 - 维护 nginx 安全基线（`scripts/check-nginx-version.sh`：1.30.7+ 稳定版或 1.31.9+），构建和冒烟测试都会校验，低于基线直接失败。
 - **自带主题 `enterprise` / `enterprise_night` / `enterprise_auto`**（`themes/enterprise/`）：构建时用固定版本 TT-RSS 的 LESS 源码编译并放进 `themes.local/`，只是新增可选项，不改默认值和现有用户的选择。TT-RSS 升级后如果主题对应的上游结构变了，构建会直接失败，不会悄悄发出样式错乱的镜像。切换与回退方法见 [themes/enterprise/README.md](themes/enterprise/README.md)。
 - GitHub Actions 发布 `ghcr.io/jiemo9527/ttrss:<sha7>`、`<sha7>-<日期>` 和 `latest`，支持 amd64/arm64。每天重建一次，拉入 Alpine 的安全更新（nginx、PHP、OpenSSL 等）。生产建议固定带日期的标签；镜像发布不会自动部署到服务器。
