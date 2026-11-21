@@ -2,7 +2,7 @@ FROM docker.io/alpine:3.24 AS builder
 
 RUN apk add --update tar curl git gcc musl-dev gnu-libiconv-dev
 
-ARG TTRSS_REF=bbba4f75bf135c32a491c4926f95c0895f1e4565
+ARG TTRSS_REF=bdd57ea86ff6beab69be2fc883d202181a6bd18a
 
 # Download plugins
 WORKDIR /var/www/plugins.local
