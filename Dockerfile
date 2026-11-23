@@ -2,7 +2,7 @@ FROM docker.io/alpine:3.24 AS builder
 
 RUN apk add --update tar curl git gcc musl-dev gnu-libiconv-dev
 
-ARG TTRSS_REF=bdd57ea86ff6beab69be2fc883d202181a6bd18a
+ARG TTRSS_REF=7240fb58efef5471a92b0937f81acc6aa3eca6a7
 
 # Download plugins
 WORKDIR /var/www/plugins.local
@@ -133,9 +133,9 @@ WORKDIR /var/www
 
 COPY scripts/check-nginx-version.sh /tmp/check-nginx-version.sh
 
-# Install dependencies
+# 沿用上游安全版本约束做法，但保留本仓库固定的 PHP 8.3 分支。
 RUN set -ex \
-  && PHP_PACKAGES="fpm ctype curl dom exif fileinfo gd iconv intl json mbstring \
+  && PHP_PACKAGES="ctype curl dom exif fileinfo gd iconv intl json mbstring \
   openssl opcache pcntl pdo pdo_pgsql pecl-apcu phar posix session simplexml sockets sodium tokenizer xml xmlwriter zip \
   gmp pecl-imagick" \
   && EXT_LIST="" \
@@ -143,9 +143,10 @@ RUN set -ex \
        EXT_LIST="$EXT_LIST php${PHP_SUFFIX}-$p"; \
      done \
   && apk add --update --no-cache git nginx s6 curl sudo tzdata gnu-libiconv \
-  php${PHP_SUFFIX}=${PHP_PACKAGE_VERSION} $EXT_LIST \
+  "php${PHP_SUFFIX}=${PHP_PACKAGE_VERSION}" "php${PHP_SUFFIX}-fpm=${PHP_PACKAGE_VERSION}" $EXT_LIST \
   imagemagick-heic imagemagick-svg \
   ca-certificates && rm -rf /var/cache/apk/* \
+  && apk list --installed "php${PHP_SUFFIX}" "php${PHP_SUFFIX}-fpm" nginx \
   && sh /tmp/check-nginx-version.sh && rm /tmp/check-nginx-version.sh \
   && if [ ! -e /usr/bin/php ]; then ln -s /usr/bin/php${PHP_SUFFIX} /usr/bin/php; fi \
   && test "$(php -r 'echo PHP_VERSION;')" = "${PHP_PACKAGE_VERSION%-r*}" \
