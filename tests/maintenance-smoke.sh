@@ -14,6 +14,17 @@ docker run --rm --entrypoint php "$image" -l /var/www/bridge.php
 # Source patches: intervals, stale-lock minutes, feed ports (incl. a private port via ALLOW_PORTS)
 docker run --rm -i --entrypoint php -e TTRSS_ALLOW_PORTS=80,443,8877 -e TTRSS_UPDATE_LOCK_MINUTES=1 "$image" -- /dev/stdin < "$here/patches-test.php"
 docker run --rm --entrypoint nginx "$image" -t
+# 镜像默认的中断更新重试时间为 3 分钟（上游固定 10）。
+docker run --rm --entrypoint sh "$image" -c 'test "$UPDATE_LOCK_MINUTES" = 3'
+# 固定提交的插件与第三方主题已解压到位。
+docker run --rm --entrypoint sh "$image" -c '
+  for f in /var/www/plugins/fever/init.php /var/www/plugins.local/api_newsplus/init.php \
+    /var/www/plugins.local/wallabag_v2/init.php /var/www/plugins.local/api_feedreader/init.php \
+    /var/www/plugins.local/auth_oidc/init.php /var/www/plugins.local/freshapi/init.php \
+    /var/www/themes.local/feedly.css /var/www/themes.local/rsshub.css /var/www/themes.local/feedlish.css; do
+    test -s "$f" || { echo "missing $f"; exit 1; }
+  done
+  test -d /var/www/themes.local/feedly/fonts'
 # Enterprise theme ships as selectable files only (light/dark/auto + recoloured widgets).
 docker run --rm --entrypoint sh "$image" -c '
   cd /var/www/themes.local &&

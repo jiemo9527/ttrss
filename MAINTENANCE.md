@@ -4,11 +4,11 @@
 
 ## 本仓库维护范围
 
-- **自动同步上游**：每小时检查 Awesome-TTRSS 与 TT-RSS 应用；有更新时自动导入、全量测试（回归 + 镜像构建 + 订阅抓取 e2e），通过后快进 `main` 并发布镜像。`upstream-lock.json` 记录当前同步到的提交。
+- **自动同步上游**：每小时检查 Awesome-TTRSS 与 TT-RSS 应用；有更新时自动导入，推送候选分支并开 PR、跑全量测试（回归 + 镜像构建 + 订阅抓取 e2e）；**需人工确认后合并**，合并到 `main` 后才发布镜像。`upstream-lock.json` 记录当前同步到的提交。
 - 集成 `src/bridge.php`：FlareSolverr RSS bridge，密钥只通过 `/etc/ttrss-bridge.key` 挂载；保留旧 `?key=` 用法，推荐 `X-Bridge-Key` 请求头，避免密钥进入 URL 日志。
 - **对 TT-RSS 源码的修改放在 `patches/`**，构建时打进镜像（不是容器启动时注入）：
   - 订阅更新间隔增加 **1/3/5/10 分钟**选项；
-  - 中断的更新多久后可重试改为可配置 `UPDATE_LOCK_MINUTES`（1–10，镜像默认 1，上游固定 10）；
+  - 中断的更新多久后可重试改为可配置 `UPDATE_LOCK_MINUTES`（1–10，镜像默认 3，上游固定 10）；
   - **订阅源可以用任意端口**（上游只允许 80/443）；内网地址只放行 `ALLOW_PORTS` 中的端口，本机回环和链路本地地址（含云厂商元数据 169.254.169.254）始终拒绝。
   - `http://` 订阅上游本来就支持，无需修改。
   - 不会批量修改已有订阅的更新频率。
@@ -21,7 +21,7 @@
 
 ```yaml
 environment:
-  UPDATE_LOCK_MINUTES: "1"        # 1..10，中断的更新多少分钟后重试
+  UPDATE_LOCK_MINUTES: "3"        # 1..10，中断的更新多少分钟后重试
   ALLOW_PORTS: "80,443,8877"      # 内网订阅源允许的端口；公网源任意端口都可以
   TTRSS_DAEMON_SLEEP_INTERVAL: "60"
 volumes:
@@ -39,8 +39,9 @@ volumes:
 1. `scripts/sync-upstream.py --apply` 取 Awesome-TTRSS `main` 与 TT-RSS `main` 的最新提交。
 2. 容器上游的变更以补丁方式三方合并导入；本仓库自有的 `README.md`、`docker-compose.yml`、`.github/workflows`、`dependabot.yml` 不被覆盖，上游 README / workflows 归档到 `docs/` 供对照。TT-RSS 应用更新只改 `Dockerfile` 的 `TTRSS_REF`。
 3. 同步前会在新的 TT-RSS 提交上试打 `patches/*.patch`；打不上就停下。
-4. 候选提交推到 `bot/upstream-sync`，跑完整测试；**全部通过才快进 `main`**，随后发布镜像。
-5. 冲突、补丁打不上、上游历史改写或测试失败时不改 `main`，自动开一个 “Upstream sync needs attention” issue。
+4. 候选提交推到 `bot/upstream-sync`，在该分支触发完整测试（只验证不发布），并开 / 更新同步 PR。
+5. **人工审查上游 diff 与检查结果后合并 PR**；`main` 受分支保护，必须通过 `test` 与 `e2e` 检查，禁止强推和删除。合并后的 push 发布镜像。
+6. 冲突、补丁打不上或上游历史改写时不推送候选，自动开一个 “Upstream sync needs attention” issue。
 
 手动处理冲突：
 
@@ -50,7 +51,7 @@ python scripts/sync-upstream.py           # 只检查
 python scripts/sync-upstream.py --apply   # 本地生成同步提交，冲突时报告文件
 ```
 
-解决后提交、推送 `main`；`push` 会触发构建与发布。
+解决后推到新分支并开 PR，检查通过后合并；合并到 `main` 才会触发发布。
 
 ### 修改 / 新增 TT-RSS 源码补丁
 
@@ -66,7 +67,8 @@ git diff > /path/to/ttrss/patches/0001-update-intervals-and-feed-ports.patch
 
 其他说明：
 
-- 插件/主题仍按上游方式下载各自的移动分支，**未逐个锁定提交**，每次构建可能变化；不要把它当作完全可复现构建，部署前先测试。
+- 插件与第三方主题在 `Dockerfile` 中固定到 40 位提交（`scripts/fetch-github-archive.sh` 下载对应源码包）；升级时核对上游变更，修改提交后走 PR。Alpine 软件包和基础镜像仍随重建更新，不是完全可复现构建。
+- GitHub Actions 固定到提交 SHA（行尾注释标版本），Dependabot 会按周提 PR 更新；`tests/pinning-test.sh` 在 CI 中拒绝未固定的来源。
 - 安全基线上调时，修改 `scripts/check-nginx-version.sh`（构建和冒烟测试共用）。
 - 生产切换：先用独立数据库验证候选镜像，备份数据库后在维护窗口只替换应用容器，不升级 PostgreSQL 主版本。
 

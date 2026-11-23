@@ -1,7 +1,8 @@
 name: Sync upstream
-# Hourly: import Awesome-TTRSS changes and the latest tt-rss commit, run the
-# full test suite on the candidate, fast-forward main, then publish images.
-# Conflicts or failing tests never reach main; they open an issue instead.
+# 每小时检查 Awesome-TTRSS 与 TT-RSS；有更新时生成候选提交，推送到
+# bot/upstream-sync，在该分支触发完整 CI（只验证不发布），并开 / 更新 PR。
+# 不再自动快进 main：PR 需人工确认后合并，合并后的 push 才会发布镜像。
+# 冲突或补丁失败时不推送，改为开 / 更新 “Upstream sync needs attention” issue。
 on:
   workflow_dispatch:
   schedule:
@@ -11,22 +12,41 @@ permissions:
 concurrency:
   group: upstream-sync
   cancel-in-progress: false
+env:
+  BRANCH: bot/upstream-sync
 jobs:
   sync:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      pull-requests: write
+      actions: write
     outputs:
       changed: ${{ steps.sync.outputs.changed }}
       conflict: ${{ steps.sync.outputs.conflict }}
-      sha: ${{ steps.sync.outputs.sha }}
-      key: ${{ steps.sync.outputs.key }}
+      key: ${{ steps.check.outputs.key }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           fetch-depth: 0
+      - id: check
+        name: Skip if the open candidate already has this upstream key
+        run: |
+          python3 scripts/sync-upstream.py --github-output "$RUNNER_TEMP/check.out" >/dev/null
+          key=$(sed -n 's/^key=//p' "$RUNNER_TEMP/check.out")
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          pending=false
+          if git fetch --quiet origin "$BRANCH" 2>/dev/null; then
+            cur=$(git show FETCH_HEAD:upstream-lock.json | python3 -c 'import json,sys; l=json.load(sys.stdin); print(l["container"]["commit"][:7] + "-" + l["application"]["commit"][:7])')
+            if [ "$cur" = "$key" ] && git merge-base --is-ancestor origin/main FETCH_HEAD; then pending=true; fi
+          fi
+          echo "pending=$pending" >> "$GITHUB_OUTPUT"
       - id: sync
+        if: steps.check.outputs.pending != 'true'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -36,60 +56,43 @@ jobs:
           set -e
           if [ "$rc" = 2 ]; then exit 0; fi
           exit "$rc"
-      - name: Push candidate branch
+      - name: Push candidate, run CI, open PR
         if: steps.sync.outputs.changed == 'true'
-        run: git push --force origin HEAD:refs/heads/bot/upstream-sync
+        env:
+          KEY: ${{ steps.sync.outputs.key }}
+          SHA: ${{ steps.sync.outputs.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          git push --force origin "HEAD:refs/heads/$BRANCH"
+          # GITHUB_TOKEN 开的 PR 不会触发 pull_request 事件；改用 workflow_dispatch 在候选分支跑
+          # 完整 CI，检查结果挂在同一提交上，满足 main 的必需检查。build-release.yml 只在 main 发布。
+          gh workflow run build-release.yml --ref "$BRANCH"
+          title="chore(sync): upstream $KEY"
+          body=$(printf '%s\n' \
+            '自动同步候选，**需人工确认后合并**；合并后由 main 的 push 发布镜像，不部署生产。' '' \
+            "- upstream key: \`$KEY\`" \
+            "- 候选提交: $SHA" \
+            "- 同步运行: $RUN_URL" '' \
+            '合并前检查：上游 diff（尤其 Dockerfile、入口脚本、插件来源）以及本提交的 test / e2e 结果。')
+          n=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$n" ]; then
+            gh pr edit "$n" --title "$title" --body "$body"
+          else
+            gh pr create --base main --head "$BRANCH" --title "$title" --body "$body"
+          fi
       - name: Summary
         run: |
           {
             echo "### Upstream sync"
-            echo "- changed: ${{ steps.sync.outputs.changed }}"
+            echo "- candidate already pending: ${{ steps.check.outputs.pending }}"
+            echo "- changed: ${{ steps.sync.outputs.changed || 'false' }}"
             echo "- conflict: ${{ steps.sync.outputs.conflict || 'false' }}"
-            echo "- upstream key: ${{ steps.sync.outputs.key }}"
+            echo "- upstream key: ${{ steps.check.outputs.key }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  verify:
-    needs: sync
-    if: needs.sync.outputs.changed == 'true'
-    uses: ./.github/workflows/build-release.yml
-    with:
-      ref: ${{ needs.sync.outputs.sha }}
-      publish: 'false'
-    permissions:
-      contents: read
-      packages: write
-
-  promote:
-    needs: [sync, verify]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 0
-      - name: Fast-forward main
-        run: |
-          git fetch origin bot/upstream-sync
-          test "$(git rev-parse FETCH_HEAD)" = "${{ needs.sync.outputs.sha }}"
-          git merge --ff-only "${{ needs.sync.outputs.sha }}"
-          git push origin HEAD:refs/heads/main
-          git push origin --delete bot/upstream-sync
-
-  publish:
-    needs: [sync, promote]
-    uses: ./.github/workflows/build-release.yml
-    with:
-      ref: ${{ needs.sync.outputs.sha }}
-      publish: 'true'
-    permissions:
-      contents: read
-      packages: write
-
   report:
-    needs: [sync, verify, promote, publish]
-    if: always() && (needs.sync.result == 'failure' || needs.sync.outputs.conflict == 'true' || needs.verify.result == 'failure' || needs.promote.result == 'failure' || needs.publish.result == 'failure')
+    needs: [sync]
+    if: always() && (needs.sync.result == 'failure' || needs.sync.outputs.conflict == 'true')
     runs-on: ubuntu-24.04
     permissions:
       issues: write
@@ -98,14 +101,13 @@ jobs:
       GH_REPO: ${{ github.repository }}
       TITLE: Upstream sync needs attention
       BODY: |
-        Automatic upstream sync stopped. If verify failed, main was not changed; if publish failed, main already contains the sync commit but images were not updated.
+        自动上游同步已停止，main 未改动。
 
         - upstream key: ${{ needs.sync.outputs.key }}
         - sync: ${{ needs.sync.result }} (conflict: ${{ needs.sync.outputs.conflict || 'false' }})
-        - verify: ${{ needs.verify.result }} / promote: ${{ needs.promote.result }} / publish: ${{ needs.publish.result }}
         - run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-        Resolve manually (see MAINTENANCE.md) and close this issue.
+        按 MAINTENANCE.md 手工处理，经 PR 合并后关闭本 issue。
     steps:
       - run: |
           n=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number --jq '.[0].number')
