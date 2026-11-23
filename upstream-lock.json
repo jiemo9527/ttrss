@@ -2,11 +2,11 @@
   "container": {
     "repository": "HenryQW/Awesome-TTRSS",
     "branch": "main",
-    "commit": "d0d7506e31c1c6d4af406abbcfa5843113e40074"
+    "commit": "1164470449a5bc9af8f0cba13dcf0eba09c680b5"
   },
   "application": {
     "repository": "tt-rss/tt-rss",
     "branch": "main",
-    "commit": "bdd57ea86ff6beab69be2fc883d202181a6bd18a"
+    "commit": "7240fb58efef5471a92b0937f81acc6aa3eca6a7"
   }
 }
