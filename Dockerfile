@@ -4,45 +4,25 @@ RUN apk add --update tar curl git gcc musl-dev gnu-libiconv-dev
 
 ARG TTRSS_REF=7240fb58efef5471a92b0937f81acc6aa3eca6a7
 
-# Download plugins
+# 插件与第三方主题固定到具体提交，避免构建时拉入移动分支上的未审查代码。
+# 升级时：核对上游变更后修改对应提交，并走 PR + CI。
+COPY --chmod=0755 scripts/fetch-github-archive.sh /usr/local/bin/fetch-github-archive
+
 WORKDIR /var/www/plugins.local
 
-RUN mkdir -p /var/www/plugins/fever mercury_fulltext feediron opencc api_newsplus options_per_feed remove_iframe_sandbox wallabag_v2 auth_oidc freshapi api_feedreader prefs_effective_config && \
-  ## Fever
-  curl -sL https://github.com/DigitalDJ/tinytinyrss-fever-plugin/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=1 -C /var/www/plugins/fever tinytinyrss-fever-plugin-master && \
-  ## Mercury Fulltext
-  curl -sL https://github.com/HenryQW/mercury_fulltext/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=1 -C mercury_fulltext mercury_fulltext-master && \
-  ## Feediron
-  curl -sL https://github.com/feediron/ttrss_plugin-feediron/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=1 -C feediron ttrss_plugin-feediron-master && \
-  ## OpenCC
-  curl -sL https://github.com/HenryQW/ttrss_opencc/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=1 -C opencc ttrss_opencc-master && \
-  ## News+ API
-  curl -sL https://github.com/voidstern/tt-rss-newsplus-plugin/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=2 -C api_newsplus tt-rss-newsplus-plugin-master/api_newsplus && \
-  ## Options per feed
-  curl -sL https://github.com/entekadesign/options_per_feed/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=1 -C options_per_feed options_per_feed-master && \
-  ## Remove iframe sandbox
-  curl -sL https://github.com/DIYgod/ttrss-plugin-remove-iframe-sandbox/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=1 -C remove_iframe_sandbox ttrss-plugin-remove-iframe-sandbox-master && \
-  ## Wallabag
-  curl -sL https://github.com/joshp23/ttrss-to-wallabag-v2/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=2 -C wallabag_v2 ttrss-to-wallabag-v2-master/wallabag_v2 && \
-  ## Auth OIDC
-  curl -sL https://github.com/tt-rss/tt-rss-plugin-auth-oidc/archive/main.tar.gz | \
-  tar xzvpf - --strip-components=1 -C auth_oidc tt-rss-plugin-auth-oidc-main && \
-  ## FreshAPI
-  curl -sL https://github.com/eric-pierce/freshapi/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=1 -C freshapi freshapi-master && \
-  ## FeedReader API
-  curl -sL https://raw.githubusercontent.com/jangernert/FeedReader/master/data/tt-rss-feedreader-plugin/api_feedreader/init.php -o api_feedreader/init.php && \
-  ## Effective Config
-  curl -sL https://github.com/tt-rss/tt-rss-plugin-prefs-effective-config/archive/main.tar.gz | \
-  tar xzvpf - --strip-components=1 -C prefs_effective_config tt-rss-plugin-prefs-effective-config-main
+RUN set -e && mkdir -p /var/www/plugins/fever && \
+  fetch-github-archive DigitalDJ/tinytinyrss-fever-plugin cc297d8939f91e53bf873f8d982a7869916483df /var/www/plugins/fever && \
+  fetch-github-archive HenryQW/mercury_fulltext c0d1aa2e0d8bd2a0106629141ae88ec15816be30 mercury_fulltext && \
+  fetch-github-archive feediron/ttrss_plugin-feediron 5573ffde9c2c782eae1616e86127fb27e150130a feediron && \
+  fetch-github-archive HenryQW/ttrss_opencc 6b66af65d82db69d7f2c49059adf48c2a0a4329a opencc && \
+  fetch-github-archive voidstern/tt-rss-newsplus-plugin b3b0095f6cf6480e2faaa19e5eec9588218270ff api_newsplus api_newsplus && \
+  fetch-github-archive entekadesign/options_per_feed f62382b2325beba069b25f099bed0f787a4a4e40 options_per_feed && \
+  fetch-github-archive DIYgod/ttrss-plugin-remove-iframe-sandbox a8c6cd8b23855bd88a910bc1d4a38eea2f1cf65a remove_iframe_sandbox && \
+  fetch-github-archive joshp23/ttrss-to-wallabag-v2 49ade5a1a216de74e42c4942ffa9cbf1bf426bec wallabag_v2 wallabag_v2 && \
+  fetch-github-archive tt-rss/tt-rss-plugin-auth-oidc 9ef6658d3d613268b1de3e383c4b487aee4b78ac auth_oidc && \
+  fetch-github-archive eric-pierce/freshapi 036aa8c9d510e3710874893029c672d92ff6b97f freshapi && \
+  fetch-github-archive jangernert/FeedReader 5910f1e570780fc3116738eceac5399917bc0435 api_feedreader data/tt-rss-feedreader-plugin/api_feedreader && \
+  fetch-github-archive tt-rss/tt-rss-plugin-prefs-effective-config e9f995cdfe3d851a6b1ba931a394c00fa5510801 prefs_effective_config
 
 # Download themes
 WORKDIR /var/www/themes.local
@@ -55,15 +35,13 @@ WORKDIR /var/www/themes.local
 # https://github.com/HenryQW/Awesome-TTRSS/commit/1b077f26f8c40ce7dd7b2a0cf2263a3537118e07
 # https://github.com/tt-rss/tt-rss/commit/31ef788e02339452fa6241277e17f85067c33ba0
 
-## Feedly
-RUN curl -sL https://github.com/TonyRL/tt-rss-feedly-theme/archive/dist.tar.gz | \
-  tar xzvpf - --strip-components=1 --wildcards -C . tt-rss-feedly-theme-dist/feedly*.css tt-rss-feedly-theme-dist/feedly/fonts && \
-  ## RSSHub
-  curl -sL https://github.com/DIYgod/ttrss-theme-rsshub/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=2 -C . ttrss-theme-rsshub-master/dist/rsshub.css && \
-  ## Feedlish
-  curl -sL https://github.com/Gravemind/tt-rss-feedlish-theme/archive/master.tar.gz | \
-  tar xzvpf - --strip-components=1 --wildcards -C . tt-rss-feedlish-theme-master/feedlish*.css
+RUN set -e && t=$(mktemp -d) && \
+  fetch-github-archive TonyRL/tt-rss-feedly-theme de5c257f0722b7fc670582002668d5a0532ff01b "$t/feedly" && \
+  cp "$t"/feedly/feedly*.css . && mkdir -p feedly && cp -R "$t/feedly/feedly/fonts" feedly/ && \
+  fetch-github-archive DIYgod/ttrss-theme-rsshub be599584cae3bafbcfc3421410edf9d37a5aa13b "$t/rsshub" dist && \
+  cp "$t/rsshub/rsshub.css" . && \
+  fetch-github-archive Gravemind/tt-rss-feedlish-theme 610a7f09b25bb9030128c4ea40702c786f734522 "$t/feedlish" && \
+  cp "$t"/feedlish/feedlish*.css . && rm -rf "$t"
 
 # Fix #98, #238
 COPY src/preloadable_libiconv.c /tmp/
@@ -116,8 +94,8 @@ ENV SESSION_COOKIE_LIFETIME=24
 ENV SINGLE_USER_MODE=false
 ENV LOG_DESTINATION=sql
 ENV FEED_LOG_QUIET=false
-# Minutes before an unfinished feed update is considered stale and retried (1-10, upstream: 10)
-ENV UPDATE_LOCK_MINUTES=1
+# Minutes before an unfinished feed update is considered stale and retried (1-10, upstream: 10; 镜像默认 3)
+ENV UPDATE_LOCK_MINUTES=3
 
 # Feeds on public hosts may use any port. Private-network hosts (10/8, 172.16/12,
 # 192.168/16, fc00::/7) are only fetched on these ports. Loopback/link-local are always blocked.
