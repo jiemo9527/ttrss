@@ -2,7 +2,7 @@ FROM docker.io/alpine:3.24 AS builder
 
 RUN apk add --update tar curl git gcc musl-dev gnu-libiconv-dev
 
-ARG TTRSS_REF=f9f25914cd4783591f1b7767d63731717e8e95f8
+ARG TTRSS_REF=bdd57ea86ff6beab69be2fc883d202181a6bd18a
 
 # Download plugins
 WORKDIR /var/www/plugins.local
@@ -77,6 +77,26 @@ RUN git init /ttrss \
   && rm -rf /ttrss/tests \
   && find /ttrss -mindepth 1 -maxdepth 1 -name ".*" ! -name ".git" -exec rm -rf {} +
 
+# Local source changes to TT-RSS (update intervals, feed ports). A patch that no
+# longer applies to the pinned TTRSS_REF fails the build instead of being skipped.
+COPY patches/ /tmp/patches/
+RUN for p in /tmp/patches/*.patch; do echo "applying $p"; git -C /ttrss apply --whitespace=nowarn "$p" || exit 1; done \
+  && git -C /ttrss status --short
+
+# Enterprise theme (themes/enterprise): compiled against the pinned TT-RSS LESS
+# sources with the less version TT-RSS itself locks. Purely additive files in
+# themes.local; users pick it per account and can switch back at any time.
+FROM --platform=$BUILDPLATFORM docker.io/node:22-alpine AS themes
+COPY --from=builder /ttrss/themes /ttrss/themes
+COPY --from=builder /ttrss/lib/flat-ttrss /ttrss/lib/flat-ttrss
+COPY --from=builder /ttrss/package-lock.json /ttrss/package-lock.json
+COPY themes/enterprise/ /src/enterprise/
+RUN set -e \
+  && LESS_VERSION=$(node -p "require('/ttrss/package-lock.json').packages['node_modules/less'].version") \
+  && mkdir /build && cd /build && npm init -y >/dev/null \
+  && npm install --no-audit --no-fund --ignore-scripts "less@${LESS_VERSION}" \
+  && node /src/enterprise/build.mjs --ttrss /ttrss --out /out --node-modules /build
+
 FROM docker.io/alpine:3.24
 
 LABEL maintainer="Henry<hi@henry.wang>"
@@ -96,33 +116,39 @@ ENV SESSION_COOKIE_LIFETIME=24
 ENV SINGLE_USER_MODE=false
 ENV LOG_DESTINATION=sql
 ENV FEED_LOG_QUIET=false
-ENV TTRSS_FAST_REFRESH=true
-ENV TTRSS_UPDATE_LOCK_MINUTES=1
+# Minutes before an unfinished feed update is considered stale and retried (1-10, upstream: 10)
+ENV UPDATE_LOCK_MINUTES=1
 
-# Open up ports to bypass ttrss strict port checks, USE WITH CAUTION
+# Feeds on public hosts may use any port. Private-network hosts (10/8, 172.16/12,
+# 192.168/16, fc00::/7) are only fetched on these ports. Loopback/link-local are always blocked.
 ENV ALLOW_PORTS="80,443"
 
-ENV PHP_SUFFIX=85
+# 固定 PHP 8.3.37；后续安全版本确认后再更新，不在重建时隐式换版。
+ENV PHP_SUFFIX=83
+ARG PHP_PACKAGE_VERSION=8.3.37-r0
 
 ENV SCRIPT_ROOT=/var/www
 
 WORKDIR /var/www
 
+COPY scripts/check-nginx-version.sh /tmp/check-nginx-version.sh
+
 # Install dependencies
 RUN set -ex \
   && PHP_PACKAGES="fpm ctype curl dom exif fileinfo gd iconv intl json mbstring \
-  openssl pcntl pdo pdo_pgsql pecl-apcu phar posix session simplexml sockets sodium tokenizer xml xmlwriter zip \
+  openssl opcache pcntl pdo pdo_pgsql pecl-apcu phar posix session simplexml sockets sodium tokenizer xml xmlwriter zip \
   gmp pecl-imagick" \
   && EXT_LIST="" \
   && for p in $PHP_PACKAGES; do \
        EXT_LIST="$EXT_LIST php${PHP_SUFFIX}-$p"; \
      done \
   && apk add --update --no-cache git nginx s6 curl sudo tzdata gnu-libiconv \
-  php${PHP_SUFFIX} $EXT_LIST \
+  php${PHP_SUFFIX}=${PHP_PACKAGE_VERSION} $EXT_LIST \
   imagemagick-heic imagemagick-svg \
   ca-certificates && rm -rf /var/cache/apk/* \
-  && nginx -v 2>&1 | grep -F 'nginx/1.30.7' \
+  && sh /tmp/check-nginx-version.sh && rm /tmp/check-nginx-version.sh \
   && if [ ! -e /usr/bin/php ]; then ln -s /usr/bin/php${PHP_SUFFIX} /usr/bin/php; fi \
+  && test "$(php -r 'echo PHP_VERSION;')" = "${PHP_PACKAGE_VERSION%-r*}" \
   && echo -e "opcache.enable_cli=1\nopcache.jit=1255\nopcache.jit_buffer_size=64M" >> /etc/php${PHP_SUFFIX}/php.ini \
   && echo 'env[SCRIPT_ROOT] = $SCRIPT_ROOT' >> /etc/php${PHP_SUFFIX}/php-fpm.d/www.conf \
   # leftover files
@@ -140,8 +166,8 @@ ENV LD_PRELOAD="/usr/lib/preloadable_libiconv.so php"
 # Copy TTRSS and plugins
 COPY --from=builder --chown=nobody:nginx /ttrss /var/www
 COPY --from=builder --chown=nobody:nginx /var/www /var/www
+COPY --from=themes --chown=nobody:nginx /out/ /var/www/themes.local/
 COPY src/bridge.php /var/www/bridge.php
-COPY src/apply-maintenance.php /apply-maintenance.php
 
 RUN git config --global --add safe.directory /var/www \
   # https://github.com/tt-rss/tt-rss/commit/f57bb8ec244c39615d4ab247a7016aded11080a2

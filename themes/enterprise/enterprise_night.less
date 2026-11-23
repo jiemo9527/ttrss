@@ -1,0 +1,21 @@
+// Enterprise — dark. Built on TT-RSS's own night theme (themes/night.less);
+// tokens override its variables, components add the enterprise styling.
+@import (less) "@{ttrss-themes}/night_base.less";
+
+@import "_tokens_dark.less";
+@import "_components.less";
+
+// Feed favicons are usually drawn for light backgrounds (e.g. GitHub's black
+// octocat). A soft light plate keeps them recognisable on dark surfaces.
+body.flat.ttrss_main {
+	#headlines-frame .hl .right img.icon,
+	#headlines-frame .feed-title img.icon,
+	#headlines-frame .cdm .right img.icon,
+	#feedTree img.icon {
+		background: #e7e9ec;
+		border-radius: 4px;
+		padding: 1px;
+		box-sizing: content-box;
+		opacity: .9;
+	}
+}
