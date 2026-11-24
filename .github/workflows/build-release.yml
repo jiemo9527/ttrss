@@ -39,6 +39,7 @@ jobs:
           sh -n scripts/fetch-github-archive.sh
           sh tests/pinning-test.sh
           python3 tests/sync-upstream-test.py
+          python3 tests/upstream-workflow-test.py
           python3 scripts/sync-upstream.py
 
   e2e:

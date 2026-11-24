@@ -43,6 +43,8 @@ volumes:
 5. **人工审查上游 diff 与检查结果后合并 PR**；`main` 受分支保护，必须通过 `test` 与 `e2e` 检查，禁止强推和删除。合并后的 push 发布镜像。
 6. 冲突、补丁打不上或上游历史改写时不推送候选，自动开一个 “Upstream sync needs attention” issue。
 
+仓库需在 Settings → Actions → General → Workflow permissions 启用 **Allow GitHub Actions to create and approve pull requests**。默认 token 权限仍保持只读，各 job 单独声明所需写权限；同步流程只创建 / 更新 PR，不批准或自动合并。仅当同 key 候选包含当前 `main` 且对应开放 PR 存在时才跳过；若推送成功但开 PR 失败，下次运行会重试。GitHub API 查询失败会报告错误，不作为已完成处理。
+
 手动处理冲突：
 
 ```sh
