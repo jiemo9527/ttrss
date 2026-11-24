@@ -42,7 +42,11 @@ jobs:
           pending=false
           if git fetch --quiet origin "$BRANCH" 2>/dev/null; then
             cur=$(git show FETCH_HEAD:upstream-lock.json | python3 -c 'import json,sys; l=json.load(sys.stdin); print(l["container"]["commit"][:7] + "-" + l["application"]["commit"][:7])')
-            if [ "$cur" = "$key" ] && git merge-base --is-ancestor origin/main FETCH_HEAD; then pending=true; fi
+            if [ "$cur" = "$key" ] && git merge-base --is-ancestor origin/main FETCH_HEAD; then
+              # 推送成功但开 PR 失败时仍须重试，不能只凭候选分支判定已完成。
+              n=$(gh pr list --base main --head "$BRANCH" --state open --json number --jq '.[0].number')
+              if [ -n "$n" ]; then pending=true; fi
+            fi
           fi
           echo "pending=$pending" >> "$GITHUB_OUTPUT"
       - id: sync
